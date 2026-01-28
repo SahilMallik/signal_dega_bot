@@ -46,6 +46,26 @@ for name, symbol in ETFS.items():
         signal = "⏳ HOLD"
 
     final_msg += f"""
+
+    def predict_trend(price, ema200, rsi):
+    score = 0
+
+    if price > ema200:
+        score += 40
+    else:
+        score -= 40
+
+    if rsi < 40:
+        score += 30
+    elif rsi > 70:
+        score -= 30
+
+    if score >= 50:
+        return "📈 Bullish", "High", f"{score}%"
+    elif score >= 20:
+        return "➡️ Sideways", "Medium", f"{score}%"
+    else:
+        return "📉 Bearish", "High", f"{score}%"
 {name}
 Price: ₹{round(price,2)}
 RSI: {round(rsi_val,2)}
