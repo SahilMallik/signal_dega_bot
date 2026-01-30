@@ -1,65 +1,52 @@
 import yfinance as yf
 import requests
-import pandas as pd
-from datetime import datetime
+import json
+import os
 
-TOKEN = "8571388190:AAE_fyadym04D3MIrECC9tx_lExFmss_X1Q"
-CHAT_ID = "6086785805"
+TOKEN = os.getenv("8571388190:AAE_fyadym04D3MIrECC9tx_lExFmss_X1Q")
+CHAT_ID = os.getenv("6086785805")
 
-ETFS = {
-    "NIFTYBEES": "NIFTYBEES.NS",
-    "SILVERBEES": "SILVERBEES.NS",
-    "GOLDBEES": "GOLDBEES.NS",
-    "HOLDINGS": "HDFCMFGETF.NS"
-}
+ETF = "NIFTYBEES.NS"
+STATE_FILE = "last_signal.json"
 
-def RSI(series, period=14):
-    delta = series.diff()
-    gain = delta.where(delta > 0, 0)
-    loss = -delta.where(delta < 0, 0)
-    avg_gain = gain.rolling(period).mean()
-    avg_loss = loss.rolling(period).mean()
-    rs = avg_gain / avg_loss
-    return 100 - (100 / (1 + rs))
-
-final_msg = "📊 ETF MARKET UPDATE\n"
-final_msg += f"🕒 {datetime.now().strftime('%d %b %Y | %I:%M %p')}\n\n"
-
-for name, symbol in ETFS.items():
-    data = yf.download(symbol, period="1y", interval="1d")
-
+def get_signal():
+    data = yf.download(ETF, period="6mo", interval="5m")
     close = data["Close"]
-    rsi = RSI(close)
-    ema200 = close.ewm(span=200).mean()
 
-    price = float(close.iloc[-1])
-    rsi_val = float(rsi.iloc[-1])
-    ema_val = float(ema200.iloc[-1])
+    rsi = 100 - (100 / (1 + (close.diff().clip(lower=0).rolling(14).mean() /
+                              close.diff().clip(upper=0).abs().rolling(14).mean())))
+
+    ema = close.ewm(span=200).mean()
+
+    price = close.iloc[-1]
+    rsi_val = rsi.iloc[-1]
+    ema_val = ema.iloc[-1]
 
     if rsi_val < 40 and price > ema_val:
-        signal = "🟢 STRONG BUY"
-    elif rsi_val < 60:
-        signal = "✅ BUY"
+        return "BUY"
     elif rsi_val > 70:
-        signal = "⚠️ PROFIT BOOK"
+        return "SELL"
     else:
-        signal = "⏳ HOLD"
+        return "HOLD"
 
-    final_msg += f"""
+def get_last_signal():
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, "r") as f:
+            return json.load(f)["signal"]
+    return None
 
-    def predict_trend(price, ema200, rsi):
-    score = 0
+def save_signal(signal):
+    with open(STATE_FILE, "w") as f:
+        json.dump({"signal": signal}, f)
 
-    if price > ema200:
-        score += 40
-    else:
-        score -= 40
+signal = get_signal()
+last_signal = get_last_signal()
 
-    if rsi < 40:
-        score += 30
-    elif rsi > 70:
-        score -= 30
-
+if signal != last_signal:
+    msg = f"📢 ETF SIGNAL ALERT\n\nETF: NIFTYBEES\nSignal: {signal}"
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+    save_signal(signal)
     if score >= 50:
         return "📈 Bullish", "High", f"{score}%"
     elif score >= 20:
